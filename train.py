@@ -6,7 +6,7 @@ import torch
 
 from datasets import trainDataset, testDataset
 from tqdm import tqdm
-import models, utils
+import utils
 
 
 def train_model(inModel=None, train_file=None, eval_file=None,
@@ -17,7 +17,8 @@ def train_model(inModel=None, train_file=None, eval_file=None,
    model = inModel.to(device)
    
    criterion = nn.MSELoss()
-   optimizer = torch.optim.Adam([])
+   optimizer = torch.optim.Adam([
+      {'params': model.parameters(), 'lr': lr * 0.1}, ], lr = lr)
 
    train_dataloader = DataLoader(dataset=trainDataset(train_file),
                                  batch_size=batch_size,
