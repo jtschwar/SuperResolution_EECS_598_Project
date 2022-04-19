@@ -1,3 +1,6 @@
 scikit-image
 torch
 h5py
+tqdm
+PIL
+glob
