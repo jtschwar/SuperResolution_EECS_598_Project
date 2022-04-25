@@ -72,14 +72,6 @@ class FSRCNN(nn.Module):
                 nn.init.normal_(module.weight.data, mean=0.0, std=math.sqrt(2 / (module.out_channels * module.weight.data[0][0].numel())))
                 nn.init.zeros_(module.bias.data)
     
-# Implement VDSR and (SRResNet or EDSR)
-
-
-# TDB...
-# class VDSR(nn.Module):
-
-# TDB...
-# class SRResNet(nn.Module):
-
-# TBD...
+# Implement EDSR
 # class EDSR(nn.Module):
+#     def __init__(self,)

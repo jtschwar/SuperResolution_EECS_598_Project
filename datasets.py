@@ -5,10 +5,9 @@ import h5py
 
 # Define training dataset loading methods
 class trainDataset(Dataset):
-    def __init__(self, h5_file, in_group):
+    def __init__(self, h5_file):
         super(trainDataset, self).__init__()
         self.h5_file = 'data/' + h5_file
-        self.group = in_group
 
     def __getitem__(self, idx):
         with h5py.File(self.h5_file, 'r') as file:

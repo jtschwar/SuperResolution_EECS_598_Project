@@ -1,5 +1,6 @@
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
 from PIL import Image
-import scipy.ndimage
 import numpy as np
 import glob, h5py
 import skimage
@@ -24,24 +25,8 @@ def rgb2ycbcr(in_img):
 def ycbcr2rgb(in_img):
     return skimage.color.ycbcr2rgb(in_img)
 
+# Linear or Bicubic Interpolation Functions
 def downsample(in_img, scale, model, order=3):
-    
-    # Need to replace with PIL... (scipy bad)
-    # lrIm = scipy.ndimage.interpolation.zoom(in_img, (1/scale,1/scale,1), order=order, prefilter=False)        
-
-    if order == 3: resample = Image.BICUBIC
-    elif order == 2: resample = Image.BILINEAR
-    
-    lrIm = in_img.resize((in_img.width//scale,in_img.height//scale),resample=resample)
-
-    # Upsample LR image (necessary preprocessing step for SRCNN)
-    if model == 'SRCNN':
-        lrIm = in_img.resize((in_img.width*scale,in_img.height*scale),resample=resample)
-        # lrIm = scipy.ndimage.interpolation.zoom(lrIm, (scale,scale,1), order=order, prefilter=False)
-
-    return lrIm
-
-def downsample_PIL(in_img, scale, model, order=3):
 
     if order == 3: resample = Image.BICUBIC
     elif order == 2: resample = Image.BILINEAR
@@ -53,7 +38,7 @@ def downsample_PIL(in_img, scale, model, order=3):
 
     return lr
 
-def upsample(in_img, scale, order=3):
+def upsample(in_img, scale, order=3): 
 
     if order == 3: resample = Image.BICUBIC
     elif order == 2: resample = Image.BILINEAR
@@ -64,49 +49,52 @@ def upsample(in_img, scale, order=3):
     return np.array(out_img,np.float32)
 
 # Read image files, create sub-images and save them as a h5 file format. 
-def make_data(scale=3,patch_size=33,model='SRCNN'):
+def make_data(scale=3,patch_size=33,model='SRCNN',interp_order=3):
     # Scale -- value by which resizing will take place
+    # Patch Size -- size of features for feature extraction
+    # Model -- (perform upsampling before for preprocessing)
+    # Interpretation Order -- bilinear or bicubic interpolation 
 
     train_folders = ['General100', 'T91', 'BSDS200']
     test_folders  = ['Set5','Set14']
 
     inputs = []; targets = []
-    print('Creating Training Dataset..')
-    file = h5py.File('data/'+model+'_train.h5', 'w')
+    trainFile = h5py.File('data/'+model+'_train.h5', 'w')
+    valFile = h5py.File('data/'+model+'_val.h5', 'w')
     for folder in train_folders:
         imageFiles = glob.glob('SR_training_datasets/'+folder+'/*png')
-        sub_input, sub_target = preprocess_train(imageFiles,scale,patch_size,model)
+        sub_input, sub_target = preprocess_train(imageFiles,scale,patch_size,model,order=interp_order)
         inputs += sub_input; targets += sub_target
 
-    # group = file.create_group(folder)
-    file.create_dataset('lr',data=inputs)
-    file.create_dataset('hr',data=targets)
+    # Split Training and Validation Dataset 
+    inputsTrain, inputsVal, targetsTrain, targetsVal = train_test_split(inputs, targets, test_size=0.15, random_state=42)
 
-    print('Creating Testing Dataset..')
-    test_file = h5py.File('data/'+model+'_test.h5', 'w')
-    eval_file = h5py.File('data/'+model+'_eval.h5', 'w')
+    trainFile.create_dataset('lr',data=inputsTrain);  valFile.create_dataset('lr',data=inputsVal)
+    trainFile.create_dataset('hr',data=targetsTrain); valFile.create_dataset('hr',data=targetsVal)
+
+    trainFile.close(); valFile.close()
+
+    testFile = h5py.File('data/'+model+'_test.h5', 'w'); evalFile = h5py.File('data/'+model+'_eval.h5', 'w')
     for folder in test_folders:
         imageFiles = glob.glob('SR_testing_datasets/'+folder+'/*png')
 
-        inputs, targets, rawInputs, rawTargets = preprocess_eval(imageFiles,scale,model)
+        inputs, targets, rawInputs, rawTargets = preprocess_eval(imageFiles,scale,model,order=interp_order)
 
-        test_group = test_file.create_group(folder)
-        lrGroup = test_group.create_group('lr')
-        hrGroup = test_group.create_group('hr')
+        test_group = testFile.create_group(folder)
+        lrGroup = test_group.create_group('lr'); hrGroup = test_group.create_group('hr')
 
-        eval_group = eval_file.create_group(folder)
-        rawLRgroup = eval_group.create_group('lr')
-        rawHRgroup = eval_group.create_group('hr')
+        eval_group = evalFile.create_group(folder)
+        rawLRgroup = eval_group.create_group('lr'); rawHRgroup = eval_group.create_group('hr')
 
         for i in range(len(inputs)):
-            lrGroup.create_dataset(str(i),data=inputs[i])
-            hrGroup.create_dataset(str(i),data=targets[i])
-            rawLRgroup.create_dataset(str(i),data=rawInputs[i])
-            rawHRgroup.create_dataset(str(i),data=rawTargets[i])
+            lrGroup.create_dataset(str(i),data=inputs[i]); hrGroup.create_dataset(str(i),data=targets[i])
+            rawLRgroup.create_dataset(str(i),data=rawInputs[i]); rawHRgroup.create_dataset(str(i),data=rawTargets[i])
+
+    testFile.close(); evalFile.close()    
 
     
 
-def preprocess_train(imageFiles,scale,patch_size,model):
+def preprocess_train(imageFiles,scale,patch_size,model,order=3):
     
     if model == 'SRCNN': stride = 14 # referenced from SRCNN paper
     else: stride = scale
@@ -114,20 +102,7 @@ def preprocess_train(imageFiles,scale,patch_size,model):
     lr_patches = []; hr_patches = []
     for fName in imageFiles:
 
-        # Read High-Resolution (hr) image
-        hrIm = np.array(Image.open(fName).convert('RGB'),dtype=np.float32)
-        hrIm = mod_crop(hrIm,scale)
-
-        # Normalize 
-        hrIm /= np.max(hrIm)
-
-        # Downsample Images by Scale
-        hrIm = Image.fromarray(np.uint8(hrIm*255))
-        lrIm = downsample_PIL(hrIm,scale,model)
-
-        # Extract y-channel (luminance)
-        hr = rgb2ycbcr(np.array(hrIm,dtype=np.float32))[:,:,0]
-        lr = rgb2ycbcr(np.array(lrIm,dtype=np.float32))[:,:,0]
+        lr, hr = preprocess(fName, scale, model, order)[:2]
 
         # Create Patches
         for i in range(0, lr.shape[0] - patch_size + 1, stride):
@@ -141,32 +116,35 @@ def preprocess_train(imageFiles,scale,patch_size,model):
 
         return lr_patches, hr_patches
 
-def preprocess_eval(imageFiles,scale,model):
+def preprocess_eval(imageFiles,scale,model,order=3):
 
     lr_imgs = []; hr_imgs = []; raw_hr = []; raw_lr = []
 
     for fName in imageFiles:
 
-        # Read High-Resolution (hr) image
-        hrIm = np.array(Image.open(fName).convert('RGB'),dtype=np.float32)
-        hrIm = mod_crop(hrIm,scale)
-
-        # # Normalize 
-        hrIm /= np.max(hrIm)
-
-        # Downsample 
-        hrIm = Image.fromarray(np.uint8(hrIm*255))
-        lrIm = np.array(downsample_PIL(hrIm,scale,model), np.float32)
-
-        hr = rgb2ycbcr(np.array(hrIm,np.float32))[:,:,0]; lr = rgb2ycbcr(lrIm)[:,:,0]
+        lr, hr, rawLR, rawHR = preprocess(fName, scale, model, order)
 
         lr_imgs.append(lr); hr_imgs.append(hr) 
-        raw_lr.append(lrIm); raw_hr.append(hrIm)
-
-        # raw_imgs.append(np.array(np.stack((hrIm,lrIm)),np.float32))
+        raw_lr.append(rawLR); raw_hr.append(rawHR)
 
     return lr_imgs, hr_imgs, raw_lr, raw_hr
 
+def preprocess(fname, scale, model, order):
+
+    # Read High-Resolution (hr) image
+    hrIm = np.array(Image.open(fname).convert('RGB'),dtype=np.float32)
+    hrIm = mod_crop(hrIm,scale)
+
+    # Normalize 
+    hrIm /= np.max(hrIm)    
+
+    # Downsample 
+    hrIm = Image.fromarray(np.uint8(hrIm*255))
+    lrIm = np.array(downsample(hrIm,scale,model,order), np.float32)
+
+    hr = rgb2ycbcr(np.array(hrIm,np.float32))[:,:,0]; lr = rgb2ycbcr(lrIm)[:,:,0]
+
+    return lr, hr, lrIm, np.array(hrIm,dtype=np.float32)
 
 # To rescale the original image, we need to ensure there's no remainder from scaling. 
 def mod_crop(image, scale=3):
@@ -188,13 +166,27 @@ def srcnn_prediction(model,img):
     img = rgb2ycbcr(img)
 
     # apply forward model
-    pred = model(torch.tensor(img[:,:,0]).reshape(1,1,img.shape[0],img.shape[1]).to('cuda'))#.clamp(1.0,0)
+    pred = model(torch.tensor(img[:,:,0]).reshape(1,1,img.shape[0],img.shape[1]).to('cuda'))
 
     # return luminance and upsample color channels
     img[:,:,0] = pred.detach().cpu()
 
     # convert back to rbg
     return ycbcr2rgb(img)
+
+def srcnn_prediction_val(model,img):
+
+    model.eval()
+
+    # apply forward model
+    pred = model(torch.tensor(img).reshape(1,1,img.shape[0],img.shape[1]).to('cuda'))
+
+    # return luminance and upsample color channels
+    img = pred.detach().cpu()
+
+    # convert back to rbg
+    return img[0,0,:,:]
+
 
 def prediction(model,lr,scale=3):
 
@@ -205,14 +197,29 @@ def prediction(model,lr,scale=3):
     output = rgb2ycbcr(upsample(lr,scale))
 
     # apply forward model
-    pred = model(torch.tensor(input[:,:,0]).reshape(1,1,input.shape[0],input.shape[1]).to('cuda'))#.clamp(0,1.0)
+    pred = model(torch.tensor(input[:,:,0]).reshape(1,1,input.shape[0],input.shape[1]).to('cuda'))
 
     # return luminance and upsample color channels
     output[:,:,0] = pred.detach().cpu() * 255
 
     # convert back to rbg
     return ycbcr2rgb(output)
-    # return pred.detach().cpu()[0,0,]
+    
+
+def show_model_predictions(model, lr, hr, scale, val=False):
+
+    fig, (ax1,ax2,ax3) = plt.subplots(1,3,figsize=(20,4))
+    ax1.imshow(hr/255); ax1.set_title('High Resolution'); ax1.axis('off')
+    ax2.imshow(lr/255); ax2.set_title('Low Resolution (x{})'.format(scale)); ax2.axis('off')
+    
+    if model.__class__.__name__ == 'SRCNN':
+        if val: pred = srcnn_prediction_val(model,lr/255)    
+        else: pred = srcnn_prediction(model,lr/255)
+        ax3.imshow(pred); ax3.set_title('Prediction'); ax3.axis('off')
+    else:
+        if val: pred = srcnn_prediction_val(model,lr/255)  
+        else: pred = prediction(model,lr/255,scale)
+        ax3.imshow(pred/255); ax3.set_title('Prediction'); ax3.axis('off')
     
 
 # Computes + stores average and current values
