@@ -17,6 +17,8 @@ def train_model(inModel=None, lr=1e-3, batch_size=16, num_epochs=100):
    modelName = model.__class__.__name__
    
    criterion = nn.MSELoss()
+   # criterion = nn.L1Loss() # ran a few tests on L1 loss, the improvement wasn't dramatic..
+
    optimizer = torch.optim.Adam([
       {'params': model.parameters(), 'lr': lr * 0.1}, ], lr = lr)
 
@@ -45,12 +47,8 @@ def train_model(inModel=None, lr=1e-3, batch_size=16, num_epochs=100):
       epoch_losses = utils.AverageMeter()
 
       for _, data in enumerate(train_dataloader,0):
-      # with tqdm(train_dataloader, unit='batch') as tepoch:
-      #    for input, target in tepoch:
 
             input, target = data
-
-            # tepoch.set_description(f"Epoch {epoch}")
 
             optimizer.zero_grad()
             input = input.to(device); target = target.to(device)
@@ -63,8 +61,6 @@ def train_model(inModel=None, lr=1e-3, batch_size=16, num_epochs=100):
 
             loss.backward()
             optimizer.step()
-
-            # tepoch.set_postfix(loss=loss.item())
       
       metrics['loss'].append(epoch_losses.avg)
             

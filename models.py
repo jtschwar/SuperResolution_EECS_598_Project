@@ -2,12 +2,12 @@ from torch import nn
 import math
 
 class SRCNN(nn.Module):
-    def __init__(self, num_channels=1, filters=[64,32], kernels=[9,5]):
+    def __init__(self, filters=[64,32], kernels=[9,5]):
         super(SRCNN, self).__init__()
 
         # patch extraction
-        self.features = nn.Sequential(
-                         nn.Conv2d(num_channels,filters[0],kernel_size=kernels[0],padding=kernels[0]//2),
+        self.features = nn.Sequential( # (num_channels = 1)
+                         nn.Conv2d(1,filters[0],kernel_size=kernels[0],padding=kernels[0]//2),
                          nn.ReLU() )
         
         # non-linear mapping
@@ -15,7 +15,7 @@ class SRCNN(nn.Module):
                                  nn.ReLU() )
         
         # reconstruction
-        self.recon = nn.Conv2d(filters[1], num_channels,kernel_size=kernels[1],padding=kernels[1]//2) 
+        self.recon = nn.Conv2d(filters[1], 1,kernel_size=kernels[1],padding=kernels[1]//2) 
 
         self._initialize_weights()
 
@@ -34,11 +34,11 @@ class SRCNN(nn.Module):
                 nn.init.zeros_(module.bias.data)
 
 class FSRCNN(nn.Module):
-    def __init__(self, scale_factor, num_channels, d=56,s=12,m=4):
+    def __init__(self, scale_factor, d=56,s=12,m=4):
         super(FSRCNN, self).__init__()
         
-        # feature extraction layer
-        self.feature_extraction = nn.Sequential(nn.Conv2d(num_channels, d, kernel_size=5,padding=5//2),
+        # feature extraction layer                      # (num_channels = 1)
+        self.feature_extraction = nn.Sequential(nn.Conv2d(1, d, kernel_size=5,padding=5//2),
                                                 nn.PReLU(d))
     
         # Shrinking Layer
@@ -53,7 +53,7 @@ class FSRCNN(nn.Module):
         self.expand = nn.Sequential(nn.Conv2d(s,d,kernel_size=1), nn.PReLU(d))
 
         # Deconvolution Layer
-        self.deconv = nn.ConvTranspose2d(d, num_channels, kernel_size=9,stride=scale_factor,
+        self.deconv = nn.ConvTranspose2d(d, 1, kernel_size=9,stride=scale_factor,
                                          padding=9//2, output_padding=scale_factor-1)
 
         self._initialize_weights()
@@ -72,6 +72,3 @@ class FSRCNN(nn.Module):
                 nn.init.normal_(module.weight.data, mean=0.0, std=math.sqrt(2 / (module.out_channels * module.weight.data[0][0].numel())))
                 nn.init.zeros_(module.bias.data)
     
-# Implement EDSR
-# class EDSR(nn.Module):
-#     def __init__(self,)
